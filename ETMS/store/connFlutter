@@ -1,0 +1,15 @@
+<?php
+header("Content-Type: application/json");
+require 'db.php';
+
+$user_id = $_GET['user_id'];
+$query = "SELECT * FROM expenses WHERE user_id = '$user_id'";
+$result = mysqli_query($conn, $query);
+
+$expenses = array();
+while ($row = mysqli_fetch_assoc($result)) {
+    $expenses[] = $row;
+}
+
+echo json_encode($expenses);
+?>
