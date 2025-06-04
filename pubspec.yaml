@@ -36,7 +36,8 @@ dependencies:
     image_picker: ^0.8.5+3  # Make sure you have the latest version
     path: ^1.8.0  # Add this for file path manipulation
     flutter_tesseract_ocr: ^0.4.28 # Check for the latest version
-
+    pie_chart: ^5.2.0
+    intl: ^0.19.0
 
 dev_dependencies:
   flutter_test:
@@ -61,7 +62,9 @@ flutter:
   uses-material-design: true
 
   assets:
+    - assets/tessdata_config.json
     - assets/tessdata/eng.traineddata
+
   # To add assets to your application, add an assets section, like this:
   # assets:
   #   - images/a_dot_burr.jpeg
