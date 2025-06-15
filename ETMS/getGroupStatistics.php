@@ -9,30 +9,30 @@ if (!isset($_SESSION['userID'])) {
 }
 
 $user_id = $_SESSION['userID'];
-
-// Get month filter from GET parameter, or null if not provided
 $month = isset($_GET['month']) ? $_GET['month'] : null;
 
-// Base SQL query (no trailing GROUP BY or ORDER BY here)
+// SQL to get expenses grouped by category and date for groups the user belongs to
 $sql = "
     SELECT 
+        g.groupName,
         c.categoryName AS category,
         SUM(e.amount) AS amount,
         e.date
     FROM EXPENSE e
     JOIN CATEGORY c ON e.categoryID = c.categoryID
     JOIN BUDGET b ON e.budgetID = b.budgetID
-    WHERE b.userID = ? AND b.groupID IS NULL AND b.deleted_at IS NULL
+    JOIN EXPENSE_GROUP g ON b.groupID = g.groupID
+    JOIN USER_GROUP ug ON g.groupID = ug.groupID
+    WHERE ug.userID = ?
 ";
 
-// Add month filter if valid format YYYY-MM
+// Add month filter if valid
 if ($month && preg_match('/^\d{4}-\d{2}$/', $month)) {
     $sql .= " AND DATE_FORMAT(e.date, '%Y-%m') = ?";
 }
 
-// Add GROUP BY and ORDER BY only once at the end
 $sql .= "
-    GROUP BY c.categoryName, e.date
+    GROUP BY g.groupName, c.categoryName, e.date
     ORDER BY e.date DESC
 ";
 

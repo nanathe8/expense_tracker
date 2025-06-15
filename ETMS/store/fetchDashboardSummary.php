@@ -16,7 +16,7 @@ $user_id = $_SESSION['userID'];
 
 // Fetch budgetID
 $budgetID = 0;
-$budgetQuery = "SELECT budgetID FROM budget WHERE userID = ? AND groupID IS NULL AND deleted_at IS NULL";
+$budgetQuery = "SELECT budgetID FROM budget WHERE userID = ? AND groupID IS NULL";
 $stmt_budget = $conn->prepare($budgetQuery);
 $stmt_budget->bind_param("i", $user_id);
 $stmt_budget->execute();
@@ -63,55 +63,17 @@ if ($row_expense = $result_expense->fetch_assoc()) {
 }
 $stmt_expense->close();
 
-// Fetch transactions (income + expense) with categories
-$sql_transactions = "
-    SELECT 
-        e.date, 
-        'Expense' AS type, 
-        e.amount, 
-        c.categoryName AS category,
-        e.description
-    FROM expense e
-    LEFT JOIN category c ON e.categoryID = c.categoryID
-    WHERE e.budgetID = ?
-
-    UNION
-
-    SELECT 
-        i.date, 
-        'Income' AS type, 
-        i.amount, 
-        NULL AS category,
-        i.source AS description
-    FROM income i
-    WHERE i.budgetID = ?
-
-ORDER BY date DESC";
-
-$stmt_trans = $conn->prepare($sql_transactions); 
-$stmt_trans->bind_param("ii", $budgetID, $budgetID);
-$stmt_trans->execute();
-$result = $stmt_trans->get_result();
-
-$transactions = [];
-while ($row = $result->fetch_assoc()) {
-    $transactions[] = $row;
-}
-
-$stmt_trans->close();
-
 // Prepare response
 $response = [
     'total_income' => $totalIncome,
     'total_expenses' => $totalExpenses,
     'remaining_balance' => $totalIncome - $totalExpenses,
-    'transactions' => $transactions,  // add this line
-    'debug' => [
-        'user_id' => $user_id,
-        'budgetID' => $budgetID
-    ]
+    // 'transactions' => $transactions,  // add this line
+    // 'debug' => [
+    //     'user_id' => $user_id,
+    //     'budgetID' => $budgetID
+    // ]
 ];
-
 
 header('Content-Type: application/json');
 echo json_encode($response);

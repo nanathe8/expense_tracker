@@ -1,51 +1,55 @@
 <?php
-// Include the database connection
-include 'db.php';  // Make sure this is the correct path to your db.php file
+include 'db.php';
+session_start();
 
-session_start(); // Start the session
-
-// Check if user is logged in
 if (!isset($_SESSION['userID'])) {
     echo json_encode(['status' => 'failure', 'message' => 'User is not logged in.']);
     exit();
 }
 
-$userID = $_SESSION['userID'];  // Retrieve userID from session
-
-// Get data from POST request
+$userID = $_SESSION['userID'];
 $inputData = json_decode(file_get_contents('php://input'), true);
 
-// Extract budget data
-$budgetName = $inputData['budgetName'] ?? '';  // New budgetName field
-$startDate = $inputData['startDate'] ?? '';  // Changed from 'startDate' to 'dateStart'
-$endDate = $inputData['endDate'] ?? '';      // Changed from 'endDate' to 'dateEnd'
-$groupID = isset($inputData['groupID']) ? $inputData['groupID'] : NULL;  // If no groupID is provided, set it as NULL
+$budgetName = $inputData['budgetName'] ?? '';
+$startDate = $inputData['startDate'] ?? '';
+$endDate = $inputData['endDate'] ?? '';
+$groupID = isset($inputData['groupID']) ? $inputData['groupID'] : NULL;
 
-// Basic validation
 if (empty($budgetName) || empty($startDate) || empty($endDate)) {
     echo json_encode(['status' => 'failure', 'message' => 'All fields are required.']);
     exit();
 }
 
-// Check if dateStart is before dateEnd
 if (strtotime($startDate) > strtotime($endDate)) {
     echo json_encode(['status' => 'failure', 'message' => 'Start date cannot be later than end date.']);
     exit();
 }
 
-// Insert the budget data into the database (including the new budgetName)
-$stmt_insert = $conn->prepare("INSERT INTO budget (budgetName, startDate, endDate, totalIncome, totalExpenses, balance, userID, groupID) 
-VALUES (?, ?, ?, 0, 0, 0, ?, ?)");
+try {
+    $stmt_insert = $conn->prepare(
+        "INSERT INTO budget (budgetName, startDate, endDate, totalIncome, totalExpenses, balance, userID, groupID)
+         VALUES (?, ?, ?, 0, 0, 0, ?, ?)"
+    );
+    $stmt_insert->bind_param("sssii", $budgetName, $startDate, $endDate, $userID, $groupID);
+    
+    if ($stmt_insert->execute()) {
+        echo json_encode(['status' => 'success', 'message' => 'Budget created successfully.']);
+    } else {
+        throw new Exception($stmt_insert->error);
+    }
 
-// Now bind the parameters, ensuring the types match the query
-$stmt_insert->bind_param("sssii", $budgetName, $startDate, $endDate, $userID, $groupID);
+    $stmt_insert->close();
+} catch (Exception $e) {
+    // Capture trigger errors
+    $errorMessage = $e->getMessage();
 
-if ($stmt_insert->execute()) {
-    echo json_encode(['status' => 'success', 'message' => 'Budget created successfully.']);
-} else {
-    echo json_encode(['status' => 'failure', 'message' => 'Failed to create budget.']);
+    // Optional: Customize messages if needed
+    if (strpos($errorMessage, 'trigger') !== false || strpos($errorMessage, 'already exists') !== false) {
+        echo json_encode(['status' => 'failure', 'message' => 'Trigger error: ' . $errorMessage]);
+    } else {
+        echo json_encode(['status' => 'failure', 'message' => 'Error: ' . $errorMessage]);
+    }
 }
 
-$stmt_insert->close();
 $conn->close();
 ?>

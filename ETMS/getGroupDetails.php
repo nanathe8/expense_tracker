@@ -1,7 +1,6 @@
 <?php
 include 'db.php';
 session_start();
-
 header('Content-Type: application/json');
 
 if (!isset($_SESSION['userID'])) {
@@ -10,40 +9,79 @@ if (!isset($_SESSION['userID'])) {
 }
 
 $userID = $_SESSION['userID'];
-$data = json_decode(file_get_contents("php://input"), true);
-$groupID = $data['groupID'] ?? 0;
-
-if (!$groupID) {
-    echo json_encode(['status' => 'failure', 'message' => 'Group ID required']);
-    exit();
-}
 
 try {
-    // Check if user belongs to group
-    $stmtCheck = $pdo->prepare("SELECT * FROM USER_GROUP WHERE userID = ? AND groupID = ?");
-    $stmtCheck->execute([$userID, $groupID]);
-    if (!$stmtCheck->fetch()) {
-        echo json_encode(['status' => 'failure', 'message' => 'Access denied']);
+    $stmtGroupIDs = $conn->prepare("SELECT groupID FROM USER_GROUP WHERE userID = ?");
+    $stmtGroupIDs->bind_param("i", $userID);
+    $stmtGroupIDs->execute();
+    $resultGroupIDs = $stmtGroupIDs->get_result();
+
+    if ($resultGroupIDs->num_rows === 0) {
+        echo json_encode(['status' => 'failure', 'message' => 'User is not in any group']);
         exit();
     }
 
-    // Get group info
-    $stmtGroup = $pdo->prepare("SELECT groupName, groupDescription FROM EXPENSE_GROUP WHERE groupID = ?");
-    $stmtGroup->execute([$groupID]);
-    $group = $stmtGroup->fetch(PDO::FETCH_ASSOC);
+    $groupsData = [];
 
-    // Get members
-    $stmtMembers = $pdo->prepare(
-        "SELECT U.userID, U.name, UG.role FROM USER_GROUP UG JOIN USER U ON UG.userID = U.userID WHERE UG.groupID = ?"
-    );
-    $stmtMembers->execute([$groupID]);
-    $members = $stmtMembers->fetchAll(PDO::FETCH_ASSOC);
+while ($row = $resultGroupIDs->fetch_assoc()) {
+    $groupID = $row['groupID'];
 
-    echo json_encode([
-        'status' => 'success',
+    // Fetch budgets for this group
+    $stmtBudgets = $conn->prepare("SELECT * FROM budget WHERE groupID = ?");
+    $stmtBudgets->bind_param("i", $groupID);
+    $stmtBudgets->execute();
+    $resultBudgets = $stmtBudgets->get_result();
+    $budgets = $resultBudgets->fetch_all(MYSQLI_ASSOC);
+    $stmtBudgets->close();
+
+    // Group info
+    $stmtGroup = $conn->prepare("SELECT * FROM EXPENSE_GROUP WHERE groupID = ?");
+    $stmtGroup->bind_param("i", $groupID);
+    $stmtGroup->execute();
+    $resultGroup = $stmtGroup->get_result();
+    $group = $resultGroup->fetch_assoc();
+    $stmtGroup->close();
+
+    // Group members
+    $stmtMembers = $conn->prepare("
+        SELECT U.userID, U.name, UG.role
+        FROM USER_GROUP UG
+        JOIN USERS U ON UG.userID = U.userID
+        WHERE UG.groupID = ?
+    ");
+    $stmtMembers->bind_param("i", $groupID);
+    $stmtMembers->execute();
+    $resultMembers = $stmtMembers->get_result();
+    $members = $resultMembers->fetch_all(MYSQLI_ASSOC);
+    $stmtMembers->close();
+
+    // Group expenses
+    $stmtExpenses = $conn->prepare("
+        SELECT e.expenseID, e.amount, e.date, c.categoryName, e.description,
+            e.receiptImage, u.name AS addedBy
+        FROM EXPENSE e
+        JOIN CATEGORY c ON e.categoryID = c.categoryID
+        JOIN BUDGET b ON e.budgetID = b.budgetID
+        JOIN USERS u ON e.paidBy = u.userID
+        WHERE b.groupID = ? AND b.deleted_at IS NULL
+        ORDER BY e.date DESC
+    ");
+
+    $stmtExpenses->bind_param("i", $groupID);
+    $stmtExpenses->execute();
+    $resultExpenses = $stmtExpenses->get_result();
+    $expenses = $resultExpenses->fetch_all(MYSQLI_ASSOC);
+    $stmtExpenses->close();
+
+    $groupsData[] = [
         'group' => $group,
         'members' => $members,
-    ]);
-} catch (PDOException $e) {
+        'expenses' => $expenses,
+        'budgets' => $budgets  // <-- add budgets here!
+    ];
+}
+    echo json_encode(['status' => 'success', 'groups' => $groupsData]);
+
+} catch (Exception $e) {
     echo json_encode(['status' => 'failure', 'message' => $e->getMessage()]);
 }

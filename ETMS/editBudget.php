@@ -11,19 +11,56 @@ $userID = $_SESSION['userID'];
 $data = json_decode(file_get_contents("php://input"), true);
 
 $budgetID = $data['budgetID'] ?? null;
-$budgetName = $data['budgetName'] ?? '';
-$startDate = $data['startDate'] ?? '';
-$endDate = $data['endDate'] ?? '';
-$budgetAmount = $data['budgetAmount'] ?? '';
-
-if (!$budgetID || empty($budgetName) || empty($budgetAmount) || empty($startDate) || empty($endDate)) {
-    echo json_encode(['status' => 'failure', 'message' => 'Missing data']);
+if (!$budgetID) {
+    echo json_encode(['status' => 'failure', 'message' => 'Missing budget ID']);
     exit();
 }
 
-$sql = "UPDATE budget SET budgetName = ?, budgetAmount = ?, startDate = ?, endDate = ? WHERE budgetID = ? AND userID = ? AND groupID IS NULL";
+// Prepare dynamic query
+$fields = [];
+$params = [];
+$types = '';
+
+// Check which fields are provided
+if (isset($data['budgetName'])) {
+    $fields[] = "budgetName = ?";
+    $params[] = $data['budgetName'];
+    $types .= 's';
+}
+
+if (isset($data['budgetAmount'])) {
+    $fields[] = "budgetAmount = ?";
+    $params[] = $data['budgetAmount'];
+    $types .= 'i';
+}
+
+if (isset($data['startDate'])) {
+    $fields[] = "startDate = ?";
+    $params[] = $data['startDate'];
+    $types .= 's';
+}
+
+if (isset($data['endDate'])) {
+    $fields[] = "endDate = ?";
+    $params[] = $data['endDate'];
+    $types .= 's';
+}
+
+// If no fields to update, stop
+if (empty($fields)) {
+    echo json_encode(['status' => 'failure', 'message' => 'No data to update']);
+    exit();
+}
+
+// Add WHERE condition
+$sql = "UPDATE budget SET " . implode(", ", $fields) . " WHERE budgetID = ? AND userID = ? AND groupID IS NULL";
+$params[] = $budgetID;
+$params[] = $userID;
+$types .= 'ii';
+
+// Prepare and bind
 $stmt = $conn->prepare($sql);
-$stmt->bind_param("ssisii", $budgetName, $budgetAmount, $startDate, $endDate, $budgetID, $userID);
+$stmt->bind_param($types, ...$params);
 
 if ($stmt->execute()) {
     echo json_encode(['success' => true, 'message' => 'Budget updated successfully']);

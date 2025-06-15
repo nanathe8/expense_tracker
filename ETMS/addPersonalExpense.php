@@ -25,17 +25,25 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST') {
         exit();
     }
 
-    // Step 1: Check the budget belongs to this user and is a personal budget (groupID IS NULL)
-    $budget_check_sql = "SELECT * FROM BUDGET WHERE budgetID = ? AND userID = ? AND groupID IS NULL";
-    $stmt = $conn->prepare($budget_check_sql);
-    $stmt->bind_param("ii", $budget_id, $user_id);
+    // Step 1: Check if the budget exists, belongs to this user, is personal, and NOT soft-deleted
+   // Automatically select the latest personal budget (not soft-deleted)
+    $budget_query = "SELECT budgetID FROM BUDGET WHERE userID = ? AND groupID IS NULL AND deleted_at IS NULL ORDER BY created_at DESC LIMIT 1";
+    $stmt = $conn->prepare($budget_query);
+    $stmt->bind_param("i", $user_id);
     $stmt->execute();
-    $result = $stmt->get_result();
+    $budget_result = $stmt->get_result();
 
-    if ($result->num_rows == 0) {
-        echo json_encode(["status" => "error", "message" => "No valid personal budget found for the specified budget ID"]);
+    if ($budget_result->num_rows == 0) {
+        echo json_encode([
+            "status" => "error",
+            "message" => "No active personal budget found. Please create a personal budget first."
+        ]);
         exit();
     }
+
+$row = $budget_result->fetch_assoc();
+$budget_id = $row['budgetID'];
+
 
     // Step 2: Set incomeID as NULL for personal expense
     $income_id = null;
@@ -44,12 +52,13 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST') {
     $receipt_image = '';
     if (isset($_FILES['receipt_image']) && $_FILES['receipt_image']['error'] == 0) {
         $target_dir = "uploads/";
-        $target_file = $target_dir . basename($_FILES["receipt_image"]["name"]);
+        $filename = basename($_FILES["receipt_image"]["name"]);
+        $target_file = $target_dir . $filename;
         $imageFileType = strtolower(pathinfo($target_file, PATHINFO_EXTENSION));
 
         if (in_array($imageFileType, ['jpg', 'jpeg', 'png', 'gif'])) {
             if (move_uploaded_file($_FILES["receipt_image"]["tmp_name"], $target_file)) {
-                $receipt_image = $target_file;
+                $receipt_image = $filename; // Save only filename to DB
             } else {
                 echo json_encode(["status" => "error", "message" => "Error uploading receipt image."]);
                 exit();
@@ -60,9 +69,9 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST') {
         }
     }
 
-    // Step 4: Insert into EXPENSE table (incomeID as NULL)
+    // Step 4: Insert into EXPENSE table
     $stmt3 = $conn->prepare("INSERT INTO EXPENSE (categoryID, amount, description, date, budgetID, incomeID, receiptImage)
-                            VALUES (?, ?, ?, ?, ?, ?, ?)");
+                             VALUES (?, ?, ?, ?, ?, ?, ?)");
 
     if (!$stmt3) {
         echo json_encode(["status" => "error", "message" => "Error preparing query: " . $conn->error]);
